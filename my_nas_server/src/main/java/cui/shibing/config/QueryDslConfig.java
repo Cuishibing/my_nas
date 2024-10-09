@@ -19,9 +19,9 @@ public class QueryDslConfig {
 
     static {
         MysqlDataSource datasource = new MysqlDataSource();
-        datasource.setUrl("jdbc:mysql://localhost:3306/small_erp?serverTimezone=UTC");
+        datasource.setUrl("jdbc:mysql://localhost:3306/mynas?serverTimezone=UTC");
         datasource.setUser("root");
-        datasource.setPassword("root");
+        // datasource.setPassword("");
         sqlQueryFactory = new SQLQueryFactory(configuration, datasource);
     }
 

@@ -21,7 +21,7 @@ public interface Storable {
         SQLQueryFactory factory = QueryDslConfig.sqlQueryFactory;
         QTModel table = QTModel.tModel;
 
-        TModel modelData = factory.selectFrom(table).where(table.identifier.eq(getIdentifier()).and(table.valid.eq((byte) 1))).fetchOne();
+        TModel modelData = factory.selectFrom(table).where(table.identifier.eq(getIdentifier()).and(table.valid.eq(1))).fetchOne();
         if (modelData == null) {
             modelData = new TModel();
             modelData.setModelName(model.name());
@@ -29,7 +29,7 @@ public interface Storable {
             modelData.setAttributions(JSON.toJSONString(model.populate()));
             modelData.setCtime(System.currentTimeMillis() / 1000);
             modelData.setUtime(System.currentTimeMillis() / 1000);
-            modelData.setValid((byte) 1);
+            modelData.setValid(1);
 
             return factory.insert(table).populate(modelData).executeWithKey(table.id) > 0;
         } else {
@@ -44,7 +44,7 @@ public interface Storable {
         SQLQueryFactory factory = QueryDslConfig.sqlQueryFactory;
         QTModel table = QTModel.tModel;
 
-        TModel modelData = factory.selectFrom(table).where(table.identifier.eq(identifier).and(table.modelName.eq(getClass().getSimpleName())).and(table.valid.eq((byte) 1))).fetchOne();
+        TModel modelData = factory.selectFrom(table).where(table.identifier.eq(identifier).and(table.modelName.eq(getClass().getSimpleName())).and(table.valid.eq(1))).fetchOne();
         Map<String, Object> attrMap = model.populate();
         if (modelData == null || StringUtils.isBlank(modelData.getAttributions())) {
             return;

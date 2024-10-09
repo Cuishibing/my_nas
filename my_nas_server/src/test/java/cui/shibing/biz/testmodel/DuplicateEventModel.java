@@ -1,7 +1,6 @@
 package cui.shibing.biz.testmodel;
 
 import cui.shibing.core.AnnotationSupportModel;
-import cui.shibing.core.Attribution;
 import cui.shibing.core.Event;
 import cui.shibing.core.EventObj;
 

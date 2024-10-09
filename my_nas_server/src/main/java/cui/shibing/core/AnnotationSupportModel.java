@@ -8,6 +8,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public abstract class AnnotationSupportModel extends AbstractModel {
 
@@ -16,7 +17,7 @@ public abstract class AnnotationSupportModel extends AbstractModel {
     private static final Map<Class<?>, Map<String ,Method>> allAttributionSetMethods = new HashMap<>();
     private static final Map<Class<?>, Map<String ,Method>> allEventMethods = new HashMap<>();
 
-    private static final Map<Class<?>, Boolean> annotationIsParsed = new HashMap<>();
+    private static final Map<Class<?>, Boolean> annotationIsParsed = new ConcurrentHashMap<>();
 
     public void parseAnnotations() {
         if (BooleanUtils.isTrue(annotationIsParsed.get(getClass()))) {
@@ -125,15 +126,15 @@ public abstract class AnnotationSupportModel extends AbstractModel {
                             name = declaredMethod.getName();
                         }
 
-                        String finalName1 = name;
+                        String finalName = name;
                         allEventMethods.compute(getClass(), (k, v)->{
                             if (v == null) {
                                 v = new HashMap<>();
                             }
-                            if (!v.containsKey(finalName1)) {
-                                v.put(finalName1, declaredMethod);
+                            if (!v.containsKey(finalName)) {
+                                v.put(finalName, declaredMethod);
                             } else {
-                                throw new IllegalStateException(String.format("duplicate event %s in model %s", finalName1, getClass()));
+                                throw new IllegalStateException(String.format("duplicate event %s in model %s", finalName, getClass()));
                             }
                             return v;
                         });
@@ -172,33 +173,6 @@ public abstract class AnnotationSupportModel extends AbstractModel {
 
     @Override
     public Map<String, Object> populate() {
-        this.parseAnnotations();
-//        Map<String, Object> attributions = new HashMap<>();
-//        try {
-//            if (MapUtils.isNotEmpty(allAttributionFields.get(getClass()))) {
-//                for (Map.Entry<String, Field> nameAndField : allAttributionFields.get(getClass()).entrySet()) {
-//                    Field field = nameAndField.getValue();
-//                    field.setAccessible(true);
-//                    Object fieldValue = field.get(this);
-//                    attributions.put(nameAndField.getKey(), fieldValue);
-//                    field.setAccessible(false);
-//                }
-//            }
-//
-//            if (MapUtils.isNotEmpty(allAttributionGetMethods.get(getClass()))) {
-//                for (Map.Entry<String, Method> nameAndField : allAttributionGetMethods.get(getClass()).entrySet()) {
-//                    Method method = nameAndField.getValue();
-//                    method.setAccessible(true);
-//                    Object methodValue = method.invoke(this);
-//                    attributions.put(nameAndField.getKey(), methodValue);
-//                    method.setAccessible(false);
-//                }
-//            }
-//        } catch (Exception e) {
-//            throw new RuntimeException(e);
-//        }
-//        return attributions;
-
         return new InnerAttributionMap(this);
     }
 
@@ -206,36 +180,36 @@ public abstract class AnnotationSupportModel extends AbstractModel {
 
         private AnnotationSupportModel model;
         private Map<String, Field> attrFieldMap;
-        private Map<String, Method> attrMethodMap;
+        private Map<String, Method> attrGetMethodMap;
 
         public InnerAttributionMap(AnnotationSupportModel model) {
             this.model = model;
             this.model.parseAnnotations();
             this.attrFieldMap = allAttributionFields.get(model.getClass());
-            this.attrMethodMap = allAttributionSetMethods.get(model.getClass());
+            this.attrGetMethodMap = allAttributionGetMethods.get(model.getClass());
 
             if (this.attrFieldMap == null) {
                 this.attrFieldMap = new HashMap<>();
             }
 
-            if (this.attrMethodMap == null) {
-                this.attrMethodMap = new HashMap<>();
+            if (this.attrGetMethodMap == null) {
+                this.attrGetMethodMap = new HashMap<>();
             }
         }
 
         @Override
         public int size() {
-            return this.attrFieldMap.size() + this.attrMethodMap.size();
+            return this.attrFieldMap.size() + this.attrGetMethodMap.size();
         }
 
         @Override
         public boolean isEmpty() {
-            return this.attrFieldMap.isEmpty() && this.attrMethodMap.isEmpty();
+            return this.attrFieldMap.isEmpty() && this.attrGetMethodMap.isEmpty();
         }
 
         @Override
         public boolean containsKey(Object key) {
-            return this.attrFieldMap.containsKey(key) && this.attrMethodMap.containsKey(key);
+            return this.attrFieldMap.containsKey(key) && this.attrGetMethodMap.containsKey(key);
         }
 
         @Override
@@ -257,7 +231,7 @@ public abstract class AnnotationSupportModel extends AbstractModel {
                 }
             }
 
-            Method method = this.attrMethodMap.get(key);
+            Method method = this.attrGetMethodMap.get(key);
             if (method != null) {
                 method.setAccessible(true);
                 try {
@@ -287,7 +261,7 @@ public abstract class AnnotationSupportModel extends AbstractModel {
                 return before;
             }
 
-            Method method = this.attrMethodMap.get(key);
+            Method method = this.attrGetMethodMap.get(key);
             if (method != null) {
                 method.setAccessible(true);
                 try {
@@ -325,7 +299,7 @@ public abstract class AnnotationSupportModel extends AbstractModel {
         public Set<String> keySet() {
             Set<String> objects = new HashSet<>();
             objects.addAll(this.attrFieldMap.keySet());
-            objects.addAll(this.attrMethodMap.keySet());
+            objects.addAll(this.attrGetMethodMap.keySet());
             return objects;
         }
 

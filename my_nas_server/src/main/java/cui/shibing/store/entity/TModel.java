@@ -1,6 +1,6 @@
 package cui.shibing.store.entity;
 
-import javax.annotation.Generated;
+import javax.annotation.processing.Generated;
 
 /**
  * TModel is a Querydsl bean type
@@ -20,7 +20,7 @@ public class TModel {
 
     private Long utime;
 
-    private Byte valid;
+    private Integer valid;
 
     public String getAttributions() {
         return attributions;
@@ -70,11 +70,11 @@ public class TModel {
         this.utime = utime;
     }
 
-    public Byte getValid() {
+    public Integer getValid() {
         return valid;
     }
 
-    public void setValid(Byte valid) {
+    public void setValid(Integer valid) {
         this.valid = valid;
     }
 

@@ -1,13 +1,14 @@
 package cui.shibing.core;
 
-import org.apache.commons.lang3.StringUtils;
-import org.reflections.Reflections;
-
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Modifier;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
+
+import org.apache.commons.lang3.StringUtils;
+import org.reflections.Reflections;
 
 public class ModelFactory {
 
@@ -33,16 +34,18 @@ public class ModelFactory {
             Singleton singleton = clazz.getAnnotation(Singleton.class);
             if (singleton != null) {
                 try {
-                    Model model = clazz.newInstance();
+                    Constructor<? extends Model> constructor = clazz.getConstructor();
+                    Model model = constructor.newInstance();
                     registerModel(name, () -> model);
-                } catch (InstantiationException | IllegalAccessException e) {
+                } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
             } else {
                 registerModel(name, () -> {
                     try {
-                        return clazz.newInstance();
-                    } catch (InstantiationException | IllegalAccessException e) {
+                        Constructor<? extends Model> constructor = clazz.getConstructor();
+                        return constructor.newInstance();
+                    } catch (Exception e) {
                         throw new RuntimeException(e);
                     }
                 });
@@ -66,6 +69,7 @@ public class ModelFactory {
         return (T) model;
     }
 
+    @SuppressWarnings("unchecked")
     public static <T extends Model> T getModel(String modelName, String identifier) {
         Supplier<Model> modelSupplier = modelMap.get(modelName);
         if (modelSupplier == null) {
