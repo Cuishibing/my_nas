@@ -7,7 +7,9 @@ import cui.shibing.biz.common.CommonResult;
 import cui.shibing.core.EventObj;
 import cui.shibing.core.Model;
 import cui.shibing.core.ModelFactory;
+import cui.shibing.core.UriParser;
 
+import org.apache.commons.collections.MapUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,17 +31,22 @@ public class Main {
             StringBuilder result = new StringBuilder();
             try {
                 String path = httpExchange.getRequestURI().getPath();
-                String[] urlPartition = path.split("/");
+                String query = httpExchange.getRequestURI().getQuery();
 
-                if (urlPartition.length != 4) {
-                    throw new IllegalArgumentException(String.format("%s url is error", path));
+                path = path + "?" + query;
+
+                var uriInfo = UriParser.parse(path);
+
+                logger.info("接收到请求 path:{}, uriInfo:{}", path, uriInfo);
+                String modelName = uriInfo.modelName();
+                String eventName = uriInfo.eventName();
+
+                Model model;
+                if (MapUtils.isNotEmpty(uriInfo.queryParams()) && uriInfo.queryParams().containsKey("identifier")) {
+                    model = ModelFactory.getModel(modelName, uriInfo.queryParams().get("identifier"));
+                } else {
+                    model = ModelFactory.getModel(modelName);
                 }
-
-                logger.info("接收到请求 path:{}, modeName:{} method:{}", path, urlPartition[2], urlPartition[3]);
-                String modelName = urlPartition[2];
-                String eventName = urlPartition[3];
-
-                Model model = ModelFactory.getModel(modelName);
                 if (model == null) {
                     throw new IllegalArgumentException(String.format("%s model not exists", modelName));
                 }
@@ -66,7 +73,7 @@ public class Main {
 
                 result = new StringBuilder(JSON.toJSONString(resultObj));
             } catch (Exception e) {
-                logger.error("catch exception",e);
+                logger.error("catch exception", e);
                 result = new StringBuilder(e.getMessage());
             }
 
