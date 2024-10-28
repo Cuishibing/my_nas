@@ -1,90 +1,36 @@
 package cui.shibing;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
-import com.sun.net.httpserver.HttpServer;
-import cui.shibing.biz.common.CommonResult;
-import cui.shibing.core.EventObj;
-import cui.shibing.core.Model;
-import cui.shibing.core.ModelFactory;
-import cui.shibing.core.UriParser;
-
-import org.apache.commons.collections.MapUtils;
+import org.apache.catalina.Context;
+import org.apache.catalina.LifecycleException;
+import org.apache.catalina.Wrapper;
+import org.apache.catalina.startup.Tomcat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
+import cui.shibing.core.http.CoreHttpServlet;
+import jakarta.servlet.MultipartConfigElement;
 
 public class Main {
 
     private static Logger logger = LoggerFactory.getLogger(Main.class);
 
-    public static void main(String[] args) throws Exception {
-        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+    public static void main(String[] args) throws LifecycleException {
+        // 创建 Tomcat 实例并设置端口
+        Tomcat tomcat = new Tomcat();
+        tomcat.setPort(8080);
+        tomcat.getConnector();
 
-        server.createContext("/model", httpExchange -> {
-            StringBuilder result = new StringBuilder();
-            try {
-                String path = httpExchange.getRequestURI().getPath();
-                String query = httpExchange.getRequestURI().getQuery();
+        // 添加 Context
+        Context context = tomcat.addContext("", null); // null 表示不使用 Web 应用目录
 
-                path = path + "?" + query;
+        // 添加 Servlet
+        Wrapper wraper = Tomcat.addServlet(context, "coreHttpServlet", new CoreHttpServlet());
+        wraper.setMultipartConfigElement(new MultipartConfigElement(null, 10 * 1024 * 1024, 10 * 1024 * 1024, 0));
 
-                var uriInfo = UriParser.parse(path);
+        context.addServletMappingDecoded("/model/*", "coreHttpServlet");
 
-                logger.info("接收到请求 path:{}, uriInfo:{}", path, uriInfo);
-                String modelName = uriInfo.modelName();
-                String eventName = uriInfo.eventName();
-
-                Model model;
-                if (MapUtils.isNotEmpty(uriInfo.queryParams()) && uriInfo.queryParams().containsKey("identifier")) {
-                    model = ModelFactory.getModel(modelName, uriInfo.queryParams().get("identifier"));
-                } else {
-                    model = ModelFactory.getModel(modelName);
-                }
-                if (model == null) {
-                    throw new IllegalArgumentException(String.format("%s model not exists", modelName));
-                }
-
-                BufferedReader reader = new BufferedReader(new InputStreamReader(httpExchange.getRequestBody()));
-                String b;
-                do {
-                    b = reader.readLine();
-                    if (b != null) {
-                        result.append(b);
-                    }
-                } while (b != null);
-
-                JSONObject params = JSON.parseObject(result.toString());
-
-                Object eventResult = model.sendEvent(new EventObj(eventName, params));
-                Map<String, Object> resultObj = new HashMap<>();
-                if (eventResult instanceof CommonResult) {
-                    resultObj.putAll(((CommonResult) eventResult).populate());
-                } else {
-                    resultObj.put("result", eventResult);
-                }
-                resultObj.put("data", model.populate());
-
-                result = new StringBuilder(JSON.toJSONString(resultObj));
-            } catch (Exception e) {
-                logger.error("catch exception", e);
-                result = new StringBuilder(e.getMessage());
-            }
-
-            httpExchange.getResponseHeaders().add("Content-Type", "application/json");
-
-            byte[] respBytes = result.toString().getBytes(StandardCharsets.UTF_8);
-            httpExchange.sendResponseHeaders(200, respBytes.length);
-            httpExchange.getResponseBody().write(respBytes);
-            httpExchange.close();
-        });
-
-        server.start();
+        // 启动 Tomcat
+        tomcat.start();
+        tomcat.getServer().await();
     }
 }
