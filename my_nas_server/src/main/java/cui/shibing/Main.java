@@ -4,15 +4,11 @@ import org.apache.catalina.Context;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.Wrapper;
 import org.apache.catalina.startup.Tomcat;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import cui.shibing.core.http.CoreHttpServlet;
 import jakarta.servlet.MultipartConfigElement;
 
 public class Main {
-
-    private static Logger logger = LoggerFactory.getLogger(Main.class);
 
     public static void main(String[] args) throws LifecycleException {
         // 创建 Tomcat 实例并设置端口

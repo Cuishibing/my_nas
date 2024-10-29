@@ -1,11 +1,10 @@
 package cui.shibing.core.http;
 
 import java.io.IOException;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import com.alibaba.fastjson2.JSON;
@@ -24,6 +23,8 @@ public class CoreHttpServlet extends HttpServlet {
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        req.setCharacterEncoding("utf-8");
+        resp.setCharacterEncoding("utf-8");
         String uri = req.getRequestURI();
         uri = uri.replace("/model/", "");
         String[] modelAndEvent = uri.split("/");
@@ -54,9 +55,14 @@ public class CoreHttpServlet extends HttpServlet {
         if (contetnType.equals("application/json")) {
             JSONObject body = JSON.parseObject(req.getReader());
             params.putAll(body);
-
-        } else if (contetnType.contains("form-data/multi-part")) {
-
+            model.populate().putAll(params);
+        } else if (contetnType.contains("multipart/form-data")) {
+            var parts = req.getParts();
+            if (CollectionUtils.isNotEmpty(parts)) {
+                parts.forEach(part-> {
+                    params.put(part.getName(), part);
+                });
+            }
         }
 
         var eventResult = model.sendEvent(new EventObj(modelAndEvent[1], params));

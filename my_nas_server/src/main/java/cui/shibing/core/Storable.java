@@ -14,7 +14,14 @@ public interface Storable {
     String getIdentifier();
 
     default boolean exist() {
-        return StringUtils.isNotBlank(getIdentifier());
+        SQLQueryFactory factory = QueryDslConfig.sqlQueryFactory;
+        QTModel table = QTModel.tModel;
+
+        TModel modelData = factory.selectFrom(table).where(table.identifier.eq(getIdentifier()).and(table.modelName.eq(getClass().getSimpleName())).and(table.valid.eq(1))).fetchOne();
+        if (modelData == null || StringUtils.isBlank(modelData.getAttributions())) {
+            return false;
+        }
+        return true;
     }
 
     default boolean save(Model model) {
