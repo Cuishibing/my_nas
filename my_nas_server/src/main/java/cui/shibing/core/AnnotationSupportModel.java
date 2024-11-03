@@ -262,7 +262,7 @@ public abstract class AnnotationSupportModel extends AbstractModel {
                 }
                 return before;
             }
-            throw null;
+            return null;
         }
 
         @Override

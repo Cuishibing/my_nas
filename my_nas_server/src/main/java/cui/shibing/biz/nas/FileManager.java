@@ -8,6 +8,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -48,6 +49,9 @@ public class FileManager extends AnnotationSupportModel implements Storable {
     @Event
     public CommonResult createFileManager(@Param("userAccount") String userAccount,
             @Param("fileRootPath") String fileRootPath) {
+        if (StringUtils.isBlank(userAccount)) {
+            return new CommonResult().error("用户账号为空");
+        }
         this.userAccount = userAccount;
         this.fileRootPath = fileRootPath;
         this.save(this);
@@ -67,8 +71,13 @@ public class FileManager extends AnnotationSupportModel implements Storable {
 
         FileType ft = FileType.valueOf(fileType);
 
-        String filePath = this.fileRootPath + File.separator + ft.name().toLowerCase() + File.separator
-                + file.getSubmittedFileName();
+        String filePath = Path.of(fileRootPath, userAccount, ft.name().toLowerCase(), file.getSubmittedFileName())
+                .toString();
+
+        File f = new File(filePath);
+        if (!f.exists()) {
+            f.getParentFile().mkdirs();
+        }
         file.write(filePath);
 
         FileInfo fileInfo = new FileInfo(file.getSubmittedFileName(), filePath, userAccount);

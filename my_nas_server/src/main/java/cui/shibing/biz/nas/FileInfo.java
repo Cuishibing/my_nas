@@ -46,6 +46,6 @@ public class FileInfo extends AnnotationSupportModel implements Storable {
 
     @Override
     public String getIdentifier() {
-        return "%s#%s".formatted(userAccount, md5);
+        return "%s_%s".formatted(userAccount, md5);
     }
 }
