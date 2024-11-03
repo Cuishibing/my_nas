@@ -1,16 +1,18 @@
 package cui.shibing.core.http;
 
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
+import cui.shibing.core.common.FileResult;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
 
-import cui.shibing.biz.common.CommonResult;
+import cui.shibing.core.common.CommonResult;
 import cui.shibing.core.EventObj;
 import cui.shibing.core.Model;
 import cui.shibing.core.ModelFactory;
@@ -55,7 +57,7 @@ public class CoreHttpServlet extends HttpServlet {
         if (contetnType.equals("application/json")) {
             JSONObject body = JSON.parseObject(req.getReader());
             params.putAll(body);
-            model.populate().putAll(params);
+            // model.populate().putAll(params);
         } else if (contetnType.contains("multipart/form-data")) {
             var parts = req.getParts();
             if (CollectionUtils.isNotEmpty(parts)) {
@@ -65,14 +67,26 @@ public class CoreHttpServlet extends HttpServlet {
             }
         }
 
-        var eventResult = model.sendEvent(new EventObj(modelAndEvent[1], params));
         Map<String, Object> resultObj = new HashMap<>();
-        if (eventResult instanceof CommonResult) {
-            resultObj.putAll(((CommonResult) eventResult).populate());
-        } else {
-            resultObj.put("result", eventResult);
+        try {
+            var eventResult = model.sendEvent(new EventObj(modelAndEvent[1], params));
+            if (eventResult instanceof FileResult) {
+                FileResult fileResult = (FileResult) eventResult;
+                resp.setContentType(fileResult.getContentType());
+                try (var in = new FileInputStream(fileResult.getFilePath());
+                     var out = resp.getOutputStream()) {
+                    in.transferTo(out);
+                }
+                return;
+            } else if (eventResult instanceof CommonResult) {
+                resultObj.putAll(((CommonResult) eventResult).populate());
+            } else {
+                resultObj.put("result", eventResult);
+            }
+            // resultObj.put("data", model.populate());
+        } catch (Exception e) {
+            resultObj.putAll(new CommonResult().error(e.getMessage()).populate());
         }
-        resultObj.put("data", model.populate());
 
         var result = new StringBuilder(JSON.toJSONString(resultObj));
         resp.setContentType("application/json");

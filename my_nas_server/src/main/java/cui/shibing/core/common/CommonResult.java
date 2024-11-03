@@ -1,4 +1,4 @@
-package cui.shibing.biz.common;
+package cui.shibing.core.common;
 
 import cui.shibing.core.AnnotationSupportModel;
 import cui.shibing.core.Attribution;
@@ -8,6 +8,8 @@ public class CommonResult extends AnnotationSupportModel {
     private int code;
     @Attribution
     private String msg;
+    @Attribution
+    private Object data;
 
 
 
@@ -26,6 +28,13 @@ public class CommonResult extends AnnotationSupportModel {
     public CommonResult success() {
         this.code = 0;
         this.msg = "success";
+        return this;
+    }
+
+    public CommonResult success(Object data) {
+        this.code = 0;
+        this.msg = "success";
+        this.data = data;
         return this;
     }
 

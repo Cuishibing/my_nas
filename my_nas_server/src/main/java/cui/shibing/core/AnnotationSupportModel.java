@@ -157,17 +157,7 @@ public abstract class AnnotationSupportModel extends AbstractModel {
             String name = nameAndMethod.getKey();
             Method method = nameAndMethod.getValue();
 
-            this.addEventListener(name, event->{
-                method.setAccessible(true);
-                Object methodValue;
-                try {
-                    methodValue = method.invoke(this, event);
-                } catch (IllegalAccessException | InvocationTargetException e) {
-                    throw new RuntimeException(e);
-                }
-                method.setAccessible(false);
-                return methodValue;
-            });
+            this.addEventListener(name, new ModeEventListener<>(method, this));
         }
     }
 
@@ -272,7 +262,7 @@ public abstract class AnnotationSupportModel extends AbstractModel {
                 }
                 return before;
             }
-            throw new RuntimeException(String.format("can not put [key=%s]", key));
+            throw null;
         }
 
         @Override

@@ -14,6 +14,9 @@ public interface Storable {
     String getIdentifier();
 
     default boolean exist() {
+        if (StringUtils.isBlank(getIdentifier())) {
+            return false;
+        }
         SQLQueryFactory factory = QueryDslConfig.sqlQueryFactory;
         QTModel table = QTModel.tModel;
 
@@ -28,7 +31,7 @@ public interface Storable {
         SQLQueryFactory factory = QueryDslConfig.sqlQueryFactory;
         QTModel table = QTModel.tModel;
 
-        TModel modelData = factory.selectFrom(table).where(table.identifier.eq(getIdentifier()).and(table.valid.eq(1))).fetchOne();
+        TModel modelData = factory.selectFrom(table).where(table.identifier.eq(getIdentifier()).and(table.modelName.eq(model.name())).and(table.valid.eq(1))).fetchOne();
         if (modelData == null) {
             modelData = new TModel();
             modelData.setModelName(model.name());
