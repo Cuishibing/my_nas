@@ -47,7 +47,7 @@ public class FileManager extends AnnotationSupportModel implements Storable {
     }
 
     @Event
-    public CommonResult createFileManager(@Param("userAccount") String userAccount,
+    public CommonResult configureFileManager(@Param("userAccount") String userAccount,
             @Param("fileRootPath") String fileRootPath) {
         if (StringUtils.isBlank(userAccount)) {
             return new CommonResult().error("用户账号为空");
@@ -62,7 +62,7 @@ public class FileManager extends AnnotationSupportModel implements Storable {
     public CommonResult uploadFile(@Param("file") Part file, @Param("fileType") String fileType)
             throws IOException {
         if (!exist()) {
-            return new CommonResult().error("文件管理器不存在");
+            return new CommonResult().error("文件管理器未初始化");
         }
         String fileName = file.getSubmittedFileName();
         if (StringUtils.isBlank(fileName)) {
@@ -84,6 +84,18 @@ public class FileManager extends AnnotationSupportModel implements Storable {
         fileInfo.save(fileInfo);
 
         return new CommonResult().success(fileInfo.populate());
+    }
+
+    @Event
+    public CommonResult checkFileExist(@Param("userAccount") String userAccount, @Param("md5") String md5) {
+        if (StringUtils.isBlank(userAccount) || StringUtils.isBlank(md5)) {
+            return new CommonResult().error("参数不能为空");
+        }
+        
+        FileInfo fileInfo = new FileInfo();
+        fileInfo.fetch(fileInfo, userAccount + "_" + md5);
+        
+        return new CommonResult().success(fileInfo.exist());
     }
 
 }

@@ -46,7 +46,7 @@ public interface Storable {
             modelData.setAttributions(JSON.toJSONString(model.populate()));
             modelData.setUtime(System.currentTimeMillis() / 1000);
 
-            return factory.update(table).populate(modelData).execute() > 0;
+            return factory.update(table).populate(modelData).where(table.id.eq(modelData.getId()).and(table.identifier.eq(getIdentifier())).and(table.modelName.eq(model.name())).and(table.valid.eq(1))).execute() > 0;
         }
     }
 

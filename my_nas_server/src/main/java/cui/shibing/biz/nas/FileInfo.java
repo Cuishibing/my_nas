@@ -30,12 +30,7 @@ public class FileInfo extends AnnotationSupportModel implements Storable {
         this.userAccount = userAccount;
         this.md5 = Md5Util.getMd5(filePath);
     }
-
-    @Event
-    public CommonResult fileExist() {
-        return new CommonResult().success(exist());
-    }
-
+    
     @Event
     public Object getFileData() {
         if (!exist()) {
