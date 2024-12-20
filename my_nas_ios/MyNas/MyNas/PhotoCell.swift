@@ -9,43 +9,22 @@ class PhotoCell: UICollectionViewCell {
         return view
     }()
     
-    private let uploadedIndicator: UIView = {
-        let view = UIView()
-        view.backgroundColor = UIColor.systemGreen
-        view.isHidden = true
-        view.layer.cornerRadius = 10
-        return view
+    private let uploadStatusView: UIImageView = {
+        let imageView = UIImageView()
+        imageView.image = UIImage(systemName: "checkmark.circle.fill")
+        imageView.tintColor = .systemGreen
+        imageView.contentMode = .scaleAspectFit
+        imageView.isHidden = true
+        return imageView
     }()
     
-    private let checkmarkImageView: UIImageView = {
-        let view = UIImageView()
-        view.image = UIImage(systemName: "checkmark")
-        view.tintColor = .white
-        view.contentMode = .scaleAspectFit
-        return view
+    private let progressView: UIProgressView = {
+        let progress = UIProgressView(progressViewStyle: .default)
+        progress.progressTintColor = .systemBlue
+        progress.trackTintColor = .systemGray5
+        progress.isHidden = true
+        return progress
     }()
-    
-    private let selectionIndicator: UIView = {
-        let view = UIView()
-        view.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.7)
-        view.isHidden = true
-        view.layer.cornerRadius = 12
-        return view
-    }()
-    
-    private let selectionCheckmark: UIImageView = {
-        let view = UIImageView()
-        view.image = UIImage(systemName: "checkmark.circle.fill")
-        view.tintColor = .white
-        view.contentMode = .scaleAspectFit
-        return view
-    }()
-    
-    override var isSelected: Bool {
-        didSet {
-            selectionIndicator.isHidden = !isSelected
-        }
-    }
     
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -58,32 +37,41 @@ class PhotoCell: UICollectionViewCell {
     
     private func setupUI() {
         contentView.addSubview(imageView)
-        imageView.frame = contentView.bounds
-        imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        contentView.addSubview(uploadStatusView)
+        contentView.addSubview(progressView)
         
-        contentView.addSubview(uploadedIndicator)
-        uploadedIndicator.frame = CGRect(x: contentView.bounds.width - 25,
-                                       y: contentView.bounds.height - 25,
-                                       width: 20, height: 20)
-        uploadedIndicator.autoresizingMask = [.flexibleLeftMargin, .flexibleTopMargin]
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        uploadStatusView.translatesAutoresizingMaskIntoConstraints = false
+        progressView.translatesAutoresizingMaskIntoConstraints = false
         
-        uploadedIndicator.addSubview(checkmarkImageView)
-        checkmarkImageView.frame = uploadedIndicator.bounds.insetBy(dx: 4, dy: 4)
-        checkmarkImageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        
-        contentView.addSubview(selectionIndicator)
-        selectionIndicator.frame = CGRect(x: contentView.bounds.width - 30,
-                                        y: 5,
-                                        width: 24, height: 24)
-        selectionIndicator.autoresizingMask = [.flexibleLeftMargin, .flexibleBottomMargin]
-        
-        selectionIndicator.addSubview(selectionCheckmark)
-        selectionCheckmark.frame = selectionIndicator.bounds
-        selectionCheckmark.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        NSLayoutConstraint.activate([
+            imageView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            imageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            imageView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            
+            uploadStatusView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
+            uploadStatusView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            uploadStatusView.widthAnchor.constraint(equalToConstant: 20),
+            uploadStatusView.heightAnchor.constraint(equalToConstant: 20),
+            
+            progressView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            progressView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            progressView.bottomAnchor.constraint(equalTo: uploadStatusView.topAnchor, constant: -2),
+            progressView.heightAnchor.constraint(equalToConstant: 2)
+        ])
     }
     
-    func configure(with asset: PHAsset, isUploaded: Bool) {
-        uploadedIndicator.isHidden = !isUploaded
+    func configure(with asset: PHAsset, isUploaded: Bool, uploadProgress: Float? = nil) {
+        uploadStatusView.isHidden = !isUploaded
+        
+        if let progress = uploadProgress {
+            progressView.isHidden = false
+            progressView.progress = progress
+        } else {
+            progressView.isHidden = true
+            progressView.progress = 0
+        }
         
         let options = PHImageRequestOptions()
         options.deliveryMode = .opportunistic
@@ -91,7 +79,7 @@ class PhotoCell: UICollectionViewCell {
         
         PHImageManager.default().requestImage(
             for: asset,
-            targetSize: CGSize(width: 300, height: 300),
+            targetSize: CGSize(width: 200, height: 200),
             contentMode: .aspectFill,
             options: options
         ) { [weak self] image, _ in
@@ -102,7 +90,8 @@ class PhotoCell: UICollectionViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         imageView.image = nil
-        uploadedIndicator.isHidden = true
-        isSelected = false
+        uploadStatusView.isHidden = true
+        progressView.isHidden = true
+        progressView.progress = 0
     }
 } 

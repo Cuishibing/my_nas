@@ -11,7 +11,7 @@ import java.util.*;
 
 public class FileManageModel extends AnnotationSupportModel {
 
-    private static final String rootFilePath = "~/Desktop/my_nas";
+    private static final String rootFilePath = "/Users/peggy/Desktop/my_nas";
     private static final int PAGE_SIZE = 20;
 
     @Override
@@ -111,24 +111,10 @@ public class FileManageModel extends AnnotationSupportModel {
                 return Collections.emptyList();
             }
 
-            // 获取目录下所有文件
-            File[] files = dir.listFiles();
-            if (files == null || files.length == 0) {
-                return Collections.emptyList();
-            }
-
-            // 将文件列表转换为FileInfo列表并按创建时间排序
+            // 创建一个列表来存储所有文件
             List<FileInfo> fileInfoList = new ArrayList<>();
-            for (File file : files) {
-                if (file.isFile()) {  // 只处理文件，不处理目录
-                    fileInfoList.add(new FileInfo(
-                        file.getName(),
-                        file.length(),
-                        file.lastModified(),
-                        file.getAbsolutePath()
-                    ));
-                }
-            }
+            // 递归获取所有文件
+            collectFiles(dir, fileInfoList, dirPath);
 
             // 按创建时间倒序排序
             fileInfoList.sort((f1, f2) -> Long.compare(f2.getCreateTime(), f1.getCreateTime()));
@@ -146,6 +132,30 @@ public class FileManageModel extends AnnotationSupportModel {
         } catch (Exception e) {
             e.printStackTrace();
             return Collections.emptyList();
+        }
+    }
+
+    // 新增递归方法来收集所有文件
+    private void collectFiles(File dir, List<FileInfo> fileInfoList, Path basePath) {
+        File[] files = dir.listFiles();
+        if (files == null) {
+            return;
+        }
+
+        for (File file : files) {
+            if (file.isFile()) {
+                // 计算相对路径
+                String relativePath = basePath.relativize(file.toPath()).toString();
+                fileInfoList.add(new FileInfo(
+                    file.getName(),
+                    file.length(),
+                    file.lastModified(),
+                    relativePath
+                ));
+            } else if (file.isDirectory()) {
+                // 递归处理子目录
+                collectFiles(file, fileInfoList, basePath);
+            }
         }
     }
 
