@@ -6,6 +6,7 @@ import java.security.MessageDigest;
 
 public class Md5Util {
     private static final int DEFAULT_SAMPLE_SIZE = 20 * 1024; // 默认20KB
+    private static final int SAMPLE_COUNT = 5; // 采样次数
 
     public static String getPartialContentMd5(String filePath) {
         return getPartialContentMd5(filePath, DEFAULT_SAMPLE_SIZE);
@@ -26,25 +27,39 @@ public class Md5Util {
             long fileSize = file.length();
             int sampleBytes = sampleSizeKB * 1024;
 
-            // 如果文件小于2倍采样大小，直接读取整个文件
-            if (fileSize <= 2 * sampleBytes) {
+            // 如果文件小于采样大小的5倍，直接读取整个文件
+            if (fileSize <= SAMPLE_COUNT * sampleBytes) {
                 try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
                     byte[] buffer = new byte[(int) fileSize];
                     raf.read(buffer);
                     md.update(buffer);
                 }
             } else {
-                // 读取前面的采样数据
+                // 计算每个采样点之间的间隔
+                long interval = (fileSize - sampleBytes) / (SAMPLE_COUNT - 1);
+                
                 try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-                    byte[] headerBuffer = new byte[sampleBytes];
-                    raf.read(headerBuffer);
-                    md.update(headerBuffer);
-
-                    // 读取后面的采样数据
-                    raf.seek(fileSize - sampleBytes);
-                    byte[] tailBuffer = new byte[sampleBytes];
-                    raf.read(tailBuffer);
-                    md.update(tailBuffer);
+                    byte[] buffer = new byte[sampleBytes];
+                    
+                    // 进行5次采样
+                    for (int i = 0; i < SAMPLE_COUNT; i++) {
+                        // 计算当前采样点的位置
+                        long position = i * interval;
+                        raf.seek(position);
+                        
+                        // 读取采样数据
+                        int bytesRead = raf.read(buffer);
+                        if (bytesRead > 0) {
+                            // 如果读取的数据小于buffer大小，只更新实际读取的部分
+                            if (bytesRead < sampleBytes) {
+                                byte[] actualData = new byte[bytesRead];
+                                System.arraycopy(buffer, 0, actualData, 0, bytesRead);
+                                md.update(actualData);
+                            } else {
+                                md.update(buffer);
+                            }
+                        }
+                    }
                 }
             }
 

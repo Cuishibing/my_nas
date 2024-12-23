@@ -1,15 +1,20 @@
 package cui.shibing.biz.nas;
 
 import cui.shibing.core.*;
-import cui.shibing.store.entity.QTModel;
-import cui.shibing.store.entity.TModel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 public class FileManageModel extends AnnotationSupportModel {
+    private static final Logger logger = LoggerFactory.getLogger(FileManageModel.class);
 
     private static final String rootFilePath = "/Users/peggy/Desktop/my_nas";
     private static final int PAGE_SIZE = 20;
@@ -17,7 +22,7 @@ public class FileManageModel extends AnnotationSupportModel {
     @Override
     public void init() {
         super.init();
-        
+
         File rootDir = new File(rootFilePath);
         if (!rootDir.exists()) {
             boolean created = rootDir.mkdirs();
@@ -29,25 +34,33 @@ public class FileManageModel extends AnnotationSupportModel {
 
     @Event
     public boolean fileExist(@Param("md5") String md5, @Param("fileName") String fileName) {
+        logger.info("mdt:{}, fileName:{}", md5, fileName);
         if (md5 == null || fileName == null) {
             return false;
         }
+//        FileMd5Model fileMd5Model = new FileMd5Model();
+//        fileMd5Model.setName(fileName);
+//        return fileMd5Model.exist();
+
+
         ModelFactory.Condition condition = new ModelFactory.Condition();
         condition.and("name", fileName).and("md5", md5);
         Model model = ModelFactory.getModel(FileMd5Model.class.getSimpleName(), condition);
         return model != null;
+
+
     }
 
     @Event
-    public boolean uploadFile(@Param("path") String path, @Param("name") String fileName, 
-                            @Param("createTime") Long createTime, @Param("file") InputStream file) {
+    public boolean uploadFile(@Param("path") String path, @Param("name") String fileName, @Param("md5") String md5,
+                              @Param("createTime") Long createTime, @Param("file") InputStream file) {
         if (path == null || path.isEmpty() || file == null || fileName == null || fileName.isEmpty()) {
             return false;
         }
 
         // 清理路径中的特殊字符，防止目录遍历攻击
         path = path.replaceAll("\\.\\./", "")
-                  .replaceAll("\\.\\.\\\\", "");
+                .replaceAll("\\.\\.\\\\", "");
 
         try {
             // 构建完整的目标路径（包含文件名）
@@ -67,7 +80,7 @@ public class FileManageModel extends AnnotationSupportModel {
                     return false;
                 }
             }
-            
+
             // 直接写入目标文件（如果存在则覆盖）
             try (FileOutputStream fos = new FileOutputStream(targetFile)) {
                 byte[] buffer = new byte[8192];
@@ -85,8 +98,9 @@ public class FileManageModel extends AnnotationSupportModel {
             // 创建并保存FileMd5Model
             FileMd5Model md5Model = new FileMd5Model();
             md5Model.setName(fileName);
+            md5Model.setMd5(md5);
             md5Model.setPath(Path.of(path, fileName).toString());
-            md5Model.calculateMd5(targetFile.getAbsolutePath());
+//            md5Model.calculateMd5(targetFile.getAbsolutePath());
             md5Model.setCreateTime(createTime);
             return md5Model.save(md5Model);
         } catch (Exception e) {
@@ -106,7 +120,7 @@ public class FileManageModel extends AnnotationSupportModel {
 
         // 清理路径中的特殊字符
         path = path.replaceAll("\\.\\./", "")
-                  .replaceAll("\\.\\.\\\\", "");
+                .replaceAll("\\.\\.\\\\", "");
 
         try {
             Path dirPath = Paths.get(rootFilePath, path);
@@ -152,10 +166,10 @@ public class FileManageModel extends AnnotationSupportModel {
                 // 计算相对路径
                 String relativePath = basePath.relativize(file.toPath()).toString();
                 fileInfoList.add(new FileInfo(
-                    file.getName(),
-                    file.length(),
-                    file.lastModified(),
-                    relativePath
+                        file.getName(),
+                        file.length(),
+                        file.lastModified(),
+                        relativePath
                 ));
             } else if (file.isDirectory()) {
                 // 递归处理子目录
@@ -179,9 +193,20 @@ public class FileManageModel extends AnnotationSupportModel {
         }
 
         // Getters
-        public String getName() { return name; }
-        public long getSize() { return size; }
-        public long getCreateTime() { return createTime; }
-        public String getPath() { return path; }
+        public String getName() {
+            return name;
+        }
+
+        public long getSize() {
+            return size;
+        }
+
+        public long getCreateTime() {
+            return createTime;
+        }
+
+        public String getPath() {
+            return path;
+        }
     }
 }

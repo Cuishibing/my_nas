@@ -28,10 +28,20 @@ class ViewController: UIViewController {
     // 上次检查时间
     private var lastCheckTime: Date {
         get {
+            // 如果是第一次运行（没有保存的时间），返回一个很早的时间
+            if !UserDefaults.standard.bool(forKey: "HasInitializedLastCheckTime") {
+                // 设置为 2000 年 1 月 1 日
+                let initialDate = Date(timeIntervalSince1970: 946684800)  // 2000-01-01 00:00:00
+                UserDefaults.standard.set(initialDate, forKey: "LastCheckTime")
+                UserDefaults.standard.set(true, forKey: "HasInitializedLastCheckTime")
+                UserDefaults.standard.synchronize()
+                return initialDate
+            }
             return UserDefaults.standard.object(forKey: "LastCheckTime") as? Date ?? Date()
         }
         set {
             UserDefaults.standard.set(newValue, forKey: "LastCheckTime")
+            UserDefaults.standard.synchronize()
         }
     }
     
@@ -242,7 +252,7 @@ class ViewController: UIViewController {
     }
     
     private func checkNewPhotos() {
-        // 如果服务器未配置，不执行检查
+        // 如果服务���未配置，不执行检查
         guard serverConfig.isConfigured else {
             return
         }
@@ -258,30 +268,46 @@ class ViewController: UIViewController {
         if newAssets.count > 0 {
             print("发现 \(newAssets.count) 张新照片")
             
+            // 获取最新照片的创建时间并更新 lastCheckTime
+            if let latestAsset = newAssets.firstObject,
+               let creationDate = latestAsset.creationDate {
+                print("更新最后检查时间为: \(creationDate)")
+                lastCheckTime = creationDate  // 这里会触发 set 方法进行持久化
+            }
+            
             // 上传新照片
             for i in 0..<newAssets.count {
                 let asset = newAssets[i]
                 uploadPhoto(asset: asset)
             }
             
-            // 先更新数据源
-            let oldAssets = self.assets
-            loadPhotos()
-            
-            // 如果有之前的数据源，执行增量更新
-            if let oldAssets = oldAssets {
-                // 计算新增的索引路径
-                let oldCount = oldAssets.count
+            // 更新数据源和UI
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                
+                // 保存旧的数量
+                let oldCount = self.assets?.count ?? 0
+                
+                // 更新数据源
+                let allOptions = PHFetchOptions()
+                allOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+                self.assets = PHAsset.fetchAssets(with: .image, options: allOptions)
+                
+                // 获取新的数量
                 let newCount = self.assets?.count ?? 0
                 
-                // 只有当新数量大于旧数量时才执行插入操作
-                if newCount > oldCount {
-                    let indexPaths = (0..<(newCount - oldCount)).map { 
+                // 计算实际新增的数量
+                let insertedCount = newCount - oldCount
+                
+                if insertedCount > 0 {
+                    // 创建新增的索引路径
+                    let indexPaths = (0..<insertedCount).map { 
                         IndexPath(item: $0, section: 0)
                     }
                     
-                    collectionView.performBatchUpdates {
-                        collectionView.insertItems(at: indexPaths)
+                    // 执行批量更新
+                    self.collectionView.performBatchUpdates {
+                        self.collectionView.insertItems(at: indexPaths)
                     } completion: { _ in
                         // 滚动到顶部显示新照片
                         if oldCount > 0 {
@@ -292,19 +318,11 @@ class ViewController: UIViewController {
                             )
                         }
                     }
-                } else {
-                    // 如果数量关系不符合预期，直接重新加载
-                    collectionView.reloadData()
                 }
-            } else {
-                // 如果没有之前的数据源，直接重新加载
-                collectionView.reloadData()
             }
         } else {
             print("没有发现新照片")
         }
-        
-        lastCheckTime = Date()
     }
     
     private func showPermissionAlert() {
@@ -352,7 +370,7 @@ class ViewController: UIViewController {
         isMultiSelectMode.toggle()
         
         if !isMultiSelectMode {
-            // 退出多选模式，取消所有选中状态
+            // 退出多选模式取消所有选中状态
             selectedAssets.removeAll()
             for indexPath in collectionView.indexPathsForSelectedItems ?? [] {
                 collectionView.deselectItem(at: indexPath, animated: true)
@@ -389,7 +407,7 @@ class ViewController: UIViewController {
     }
     
     private func deleteSelectedPhotos(includeRemote: Bool) {
-        // 保存要删除的索引路径
+        // 保存要删除的引路径
         _ = selectedAssets.compactMap { asset -> IndexPath? in
             guard let index = assets?.index(of: asset) else { return nil }
             return IndexPath(item: index, section: 0)
@@ -447,7 +465,7 @@ class ViewController: UIViewController {
             checkTimer?.invalidate()
             checkTimer = nil
         } else {
-            // 如果服务器已配置但定时器未运行，启动它
+            // 如果服务器配置但定时器未运行，启动它
             if checkTimer == nil {
                 startCheckingNewPhotos()
             }
@@ -488,7 +506,7 @@ class ViewController: UIViewController {
             return
         }
         
-        // 标记为正在处理
+        // 标记正在处理
         uploadingAssets.insert(assetId)
         
         // 添加到上传队列
@@ -500,7 +518,7 @@ class ViewController: UIViewController {
     
     // 添加处理上传队列的方法
     private func processUploadQueue() {
-        // 如果正在上传或队列为空，直接返回
+        // 如果正在上传或队列空，直接返回
         guard !isUploading, let asset = uploadQueue.first else {
             return
         }
@@ -529,7 +547,7 @@ class ViewController: UIViewController {
             print("上传失败，准备重试，剩余重试次数：\(retryCount - 1)")
             // 从正在上传集合中移除，允许重试
             uploadingAssets.remove(asset.localIdentifier)
-            // 延迟一秒后重试
+            // 延迟一秒后试
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
                 self?.uploadPhoto(asset: asset, retryCount: retryCount - 1)
             }
@@ -582,6 +600,7 @@ class ViewController: UIViewController {
             
             let fileExtension = self.getFileExtension(from: dataUTI)
             let fileName = "\(asset.localIdentifier).\(fileExtension)"
+            let md5String = imageData.partialMD5String  // 计算 MD5
             
             let configuration = URLSessionConfiguration.default
             let session = URLSession(configuration: configuration)
@@ -606,11 +625,12 @@ class ViewController: UIViewController {
             let dateString = DateFormatter.yyyyMMdd.string(from: creationDate)
             let username = UserDefaults.standard.string(forKey: "Username") ?? "default"
             
-            // 修改这里，name 字段也使用带扩展名的文件名
+            // 添加其他字段，包括 MD5
             let fields = [
                 "path": "/\(username)/\(dateString)",
-                "name": fileName,  // 使用带扩展名的文件名
-                "createTime": "\(Int(creationDate.timeIntervalSince1970))"
+                "name": fileName,
+                "createTime": "\(Int(creationDate.timeIntervalSince1970))",
+                "md5": md5String  // 添加 MD5 参数
             ]
             
             for (key, value) in fields {
@@ -669,7 +689,7 @@ class ViewController: UIViewController {
         }
     }
     
-    // 在 ViewController 类中添加检查文件是否存在的方法
+    // 在 ViewController 类中添加查文件是否存在的方法
     private func checkFileExists(asset: PHAsset, completion: @escaping (Bool) -> Void) {
         guard let serverURL = serverConfig.serverURL else {
             completion(false)
@@ -906,7 +926,7 @@ extension ViewController: ImageViewControllerDelegate {
     }
 }
 
-// 添加日期格式化扩展
+// 添加日期格式化扩
 extension DateFormatter {
     static let yyyyMMdd: DateFormatter = {
         let formatter = DateFormatter()
@@ -918,75 +938,58 @@ extension DateFormatter {
 // 修改 Data 的 MD5 扩展
 extension Data {
     var partialMD5String: String {
-        let chunkSize = 20 * 1024 // 20KB
-        var dataToHash = Data()
+        let sampleSizeKB = 20  // 每个样本 20KB
+        let sampleBytes = sampleSizeKB * 1024
+        let fileSize = self.count
+        let sampleCount = 5
         
-        // 添加前20KB
-        let frontData = self.prefix(chunkSize)
-        dataToHash.append(frontData)
-        
-        // 如果文件大小超过40KB，添加后20KB
-        if self.count > (2 * chunkSize) {
-            let backData = self.suffix(chunkSize)
-            dataToHash.append(backData)
-        } else if self.count > chunkSize {
-            // 如果文件大小在20KB-40KB之间，添加剩余部分
-            let backData = self.suffix(self.count - chunkSize)
-            dataToHash.append(backData)
+        // 如果文件小于采样大小的5倍，直接计算整个文件的MD5
+        if fileSize <= sampleCount * sampleBytes {
+            return self.md5String
         }
         
-        // 计算MD5
-        return dataToHash.md5String
-    }
-}
-
-extension Data {
-    var md5String: String {
-        let hash = self.withUnsafeBytes { bytes -> [UInt8] in
-            var hash = [UInt8](repeating: 0, count: 16)
-            var context = MD5_CTX()
-            MD5_Init(&context)
-            MD5_Update(&context, bytes.baseAddress, numericCast(self.count))
-            MD5_Final(&hash, &context)
-            return hash
+        // 创建 MD5 上下文
+        let length = Int(CC_MD5_DIGEST_LENGTH)
+        var digest = [UInt8](repeating: 0, count: length)
+        var context = CC_MD5_CTX()
+        CC_MD5_Init(&context)
+        
+        // 计算每个采样点之间的间隔
+        let interval = (fileSize - sampleBytes) / (sampleCount - 1)
+        
+        // 进行5次采样
+        for i in 0..<sampleCount {
+            // 计算当前采样点的位置
+            let position = i * interval
+            let endPosition = Swift.min(position + sampleBytes, fileSize)
+            let bytesToRead = endPosition - position
+            
+            // 读取采样数据
+            let range = position..<endPosition
+            let sampleData = self.subdata(in: range)
+            
+            // 更新 MD5
+            sampleData.withUnsafeBytes { buffer in
+                CC_MD5_Update(&context, buffer.baseAddress, CC_LONG(bytesToRead))
+            }
         }
-        return hash.map { String(format: "%02x", $0) }.joined()
+        
+        // 完成 MD5 计算
+        CC_MD5_Final(&digest, &context)
+        
+        // 转换为十六进制字符串
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
-}
-
-// 添加 MD5 相关结构体和函数
-private struct MD5_CTX {
-    var A: UInt32
-    var B: UInt32
-    var C: UInt32
-    var D: UInt32
-    var count: UInt64
-    var buffer: [UInt8]
     
-    init() {
-        A = 0x67452301
-        B = 0xEFCDAB89
-        C = 0x98BADCFE
-        D = 0x10325476
-        count = 0
-        buffer = [UInt8](repeating: 0, count: 64)
+    // 计算整个文件的 MD5
+    var md5String: String {
+        let length = Int(CC_MD5_DIGEST_LENGTH)
+        var digest = [UInt8](repeating: 0, count: length)
+        
+        self.withUnsafeBytes { buffer in
+            CC_MD5(buffer.baseAddress, CC_LONG(self.count), &digest)
+        }
+        
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
-}
-
-private func MD5_Init(_ context: inout MD5_CTX) {
-    context = MD5_CTX()
-}
-
-private func MD5_Update(_ context: inout MD5_CTX, _ input: UnsafeRawPointer?, _ len: Int) {
-    // 简化版MD5实现
-    guard let input = input else { return }
-    let data = Data(bytes: input, count: len)
-    context.buffer = Array(data)
-    context.count = UInt64(len)
-}
-
-private func MD5_Final(_ digest: inout [UInt8], _ context: inout MD5_CTX) {
-    // 简化版MD5实现
-    var result = context.buffer.prefix(16)
-    digest = Array(result)
 }
