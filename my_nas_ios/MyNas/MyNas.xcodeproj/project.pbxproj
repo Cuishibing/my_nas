@@ -17,6 +17,7 @@
 		151725BE2D0F1236007D30BE /* PhotoCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151725BD2D0F1236007D30BE /* PhotoCell.swift */; };
 		151725C02D0F1269007D30BE /* ImageViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151725BF2D0F1269007D30BE /* ImageViewController.swift */; };
 		151725C22D0F1281007D30BE /* ImageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151725C12D0F1281007D30BE /* ImageCell.swift */; };
+		151725C42D184594007D30BE /* WelcomeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151725C32D184593007D30BE /* WelcomeViewController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +33,7 @@
 		151725BD2D0F1236007D30BE /* PhotoCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCell.swift; sourceTree = "<group>"; };
 		151725BF2D0F1269007D30BE /* ImageViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewController.swift; sourceTree = "<group>"; };
 		151725C12D0F1281007D30BE /* ImageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCell.swift; sourceTree = "<group>"; };
+		151725C32D184593007D30BE /* WelcomeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeViewController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -64,6 +66,7 @@
 		151725A62D0F1172007D30BE /* MyNas */ = {
 			isa = PBXGroup;
 			children = (
+				151725C32D184593007D30BE /* WelcomeViewController.swift */,
 				151725C12D0F1281007D30BE /* ImageCell.swift */,
 				151725BF2D0F1269007D30BE /* ImageViewController.swift */,
 				151725BD2D0F1236007D30BE /* PhotoCell.swift */,
@@ -150,6 +153,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				151725C42D184594007D30BE /* WelcomeViewController.swift in Sources */,
 				151725AC2D0F1172007D30BE /* ViewController.swift in Sources */,
 				151725BE2D0F1236007D30BE /* PhotoCell.swift in Sources */,
 				151725A82D0F1172007D30BE /* AppDelegate.swift in Sources */,

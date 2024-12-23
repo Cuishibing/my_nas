@@ -10,6 +10,9 @@ import java.io.File;
 public class FileMd5Model extends AnnotationSupportModel implements Storable {
 
     @Attribution
+    private String name;
+
+    @Attribution
     private String path;
 
     @Attribution
@@ -20,7 +23,7 @@ public class FileMd5Model extends AnnotationSupportModel implements Storable {
 
     @Override
     public String getIdentifier() {
-        return md5;
+        return name;
     }
 
     public void calculateMd5(String rawPath) {
@@ -58,5 +61,13 @@ public class FileMd5Model extends AnnotationSupportModel implements Storable {
 
     public Long getCreateTime() {
         return createTime;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 }

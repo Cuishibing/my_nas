@@ -35,21 +35,15 @@ class ViewController: UIViewController {
         }
     }
     
-    // 上传状态缓存
-    private var uploadStatusCache: [String: Bool] {
-        get {
-            guard let data = UserDefaults.standard.data(forKey: "UploadStatusCache"),
-                  let dict = try? JSONDecoder().decode([String: Bool].self, from: data) else {
-                return [:]
-            }
-            return dict
-        }
-        set {
-            if let data = try? JSONEncoder().encode(newValue) {
-                UserDefaults.standard.set(data, forKey: "UploadStatusCache")
-            }
-        }
-    }
+    // 为了避免重复上传，添加一个正在上传的资源集合
+    private var uploadingAssets = Set<String>()
+    
+    // 上传队列
+    private var uploadQueue: [PHAsset] = []
+    private var isUploading = false
+    
+    // 上传进度跟踪
+    private var uploadProgress: [String: Float] = [:]
     
     // 添加多选相关属性
     private var isMultiSelectMode = false {
@@ -90,28 +84,65 @@ class ViewController: UIViewController {
     // 添加属性
     private var serverConfig: ServerConfig = .shared
     
-    // 为了避免重复上传，添加一个正在上传的资产集合
-    private var uploadingAssets = Set<String>()
-    
-    // 上传队列
-    private var uploadQueue: [PHAsset] = []
-    private var isUploading = false
-    
-    // 在 ViewController 类中添加上传进度跟踪
-    private var uploadProgress: [String: Float] = [:]
-    
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         requestPhotoLibraryPermission()
-        checkServerConfig() // 先检查服务器配置
+        checkServerConfig()
         
-        // 只有在服务器已配置的情况下才启动检查
+        // 添加通知观察者
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleServerConfigChange),
+            name: .serverConfigDidChange,
+            object: nil
+        )
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
+    @objc private func handleServerConfigChange() {
         if serverConfig.isConfigured {
+            // 停止现有的定时器
+            checkTimer?.invalidate()
+            checkTimer = nil
+            
+            // 重新开始检查新照片
             startCheckingNewPhotos()
+            
+            // 检查现有照片的上传状态
+            checkExistingPhotos()
+        } else {
+            checkServerConfig()
+        }
+    }
+    
+    // 修改 checkExistingPhotos 方法
+    private func checkExistingPhotos() {
+        guard let assets = self.assets,
+              serverConfig.isConfigured else { return }
+        
+        print("正在检查现有照片的上传状态...")
+        
+        // 创建一个队列来存储需要上传的照片
+        var photosToUpload: [PHAsset] = []
+        
+        for i in 0..<assets.count {
+            let asset = assets[i]
+            let assetId = asset.localIdentifier
+            
+            // 只检查是否正在上传
+            if !uploadingAssets.contains(assetId) {
+                photosToUpload.append(asset)
+            }
         }
         
-        updateNavigationItems()
+        // 批量处理需上传的照片
+        for asset in photosToUpload {
+            uploadPhoto(asset: asset)
+        }
     }
     
     private func setupUI() {
@@ -192,6 +223,11 @@ class ViewController: UIViewController {
         fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         assets = PHAsset.fetchAssets(with: .image, options: fetchOptions)
         collectionView.reloadData()
+        
+        // 照片加载完成后，如果服务器已配置，检查上传状态
+        if serverConfig.isConfigured {
+            checkExistingPhotos()
+        }
     }
     
     private func startCheckingNewPhotos() {
@@ -403,7 +439,7 @@ class ViewController: UIViewController {
         present(alert, animated: true)
     }
     
-    // 添加服务器配置检查方法
+    // 修改 checkServerConfig 方法
     private func checkServerConfig() {
         if !serverConfig.isConfigured {
             showServerConfigAlert()
@@ -415,6 +451,9 @@ class ViewController: UIViewController {
             if checkTimer == nil {
                 startCheckingNewPhotos()
             }
+            
+            // 检查所有现有照片
+            checkExistingPhotos()
         }
     }
     
@@ -435,21 +474,22 @@ class ViewController: UIViewController {
         present(alert, animated: true)
     }
     
-    // 在需要使用服务器地址的地方，可以这样使用：
-    private func uploadPhoto(asset: PHAsset) {
+    // 修改 uploadPhoto 方法，添加重试机制
+    private func uploadPhoto(asset: PHAsset, retryCount: Int = 3) {
+        let assetId = asset.localIdentifier
+        
         // 先检查服务器配置
         guard serverConfig.isConfigured else {
             return
         }
         
-        // 检查是否已经在队列中或已上传
-        guard !uploadingAssets.contains(asset.localIdentifier),
-              !(uploadStatusCache[asset.localIdentifier] ?? false) else {
+        // 只检查是否正在上传
+        guard !uploadingAssets.contains(assetId) else {
             return
         }
         
         // 标记为正在处理
-        uploadingAssets.insert(asset.localIdentifier)
+        uploadingAssets.insert(assetId)
         
         // 添加到上传队列
         uploadQueue.append(asset)
@@ -480,20 +520,34 @@ class ViewController: UIViewController {
         }
     }
     
-    // 添加处理上传完成的方法
-    private func handleUploadComplete(asset: PHAsset, success: Bool) {
+    // 修改 handleUploadComplete 方法
+    private func handleUploadComplete(asset: PHAsset, success: Bool, retryCount: Int = 3) {
         // 从队列中移除
         uploadQueue.removeFirst()
+        
+        if !success && retryCount > 0 {
+            print("上传失败，准备重试，剩余重试次数：\(retryCount - 1)")
+            // 从正在上传集合中移除，允许重试
+            uploadingAssets.remove(asset.localIdentifier)
+            // 延迟一秒后重试
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                self?.uploadPhoto(asset: asset, retryCount: retryCount - 1)
+            }
+            return
+        }
         
         // 从正在上传集合中移除
         uploadingAssets.remove(asset.localIdentifier)
         
         // 更新上传状态
         if success {
-            uploadStatusCache[asset.localIdentifier] = true
-            // 刷新对应的单元格
-            if let index = assets?.index(of: asset) {
-                collectionView.reloadItems(at: [IndexPath(item: index, section: 0)])
+            // 清除进度
+            uploadProgress.removeValue(forKey: asset.localIdentifier)
+            
+            // 刷新对应的单元格，显示绿色勾子
+            if let index = assets?.index(of: asset),
+               let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0)) as? PhotoCell {
+                cell.configure(with: asset, isUploaded: true, uploadProgress: nil)
             }
         }
         
@@ -513,14 +567,12 @@ class ViewController: UIViewController {
         }
         
         let uploadURL = serverURL.appendingPathComponent("model/FileManageModel/uploadFile")
-        
-        // 获取资源的原始数据
         let options = PHImageRequestOptions()
         options.deliveryMode = .highQualityFormat
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
         
-        PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { [weak self] (data, _, _, info) in
+        PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { [weak self] (data, dataUTI, _, info) in
             guard let self = self,
                   let imageData = data else {
                 print("获取图片数据失败")
@@ -528,37 +580,37 @@ class ViewController: UIViewController {
                 return
             }
             
-            // 创建 URLSession 配置
+            let fileExtension = self.getFileExtension(from: dataUTI)
+            let fileName = "\(asset.localIdentifier).\(fileExtension)"
+            
             let configuration = URLSessionConfiguration.default
             let session = URLSession(configuration: configuration)
             
-            // 创建URLRequest
             var request = URLRequest(url: uploadURL)
             request.httpMethod = "POST"
             
-            // 生成boundary
             let boundary = "Boundary-\(UUID().uuidString)"
             request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
             
-            // 创建multipart form数据
             var body = Data()
             
             // 添加文件数据
             body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(asset.localIdentifier).jpg\"\r\n".data(using: .utf8)!)
-            body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: \(self.getMimeType(for: fileExtension))\r\n\r\n".data(using: .utf8)!)
             body.append(imageData)
             body.append("\r\n".data(using: .utf8)!)
             
-            // 获取资产的创建日期
+            // 获取创建日期和用户名
             let creationDate = asset.creationDate ?? Date()
             let dateString = DateFormatter.yyyyMMdd.string(from: creationDate)
+            let username = UserDefaults.standard.string(forKey: "Username") ?? "default"
             
-            // 添加其他必要的字段
+            // 修改这里，name 字段也使用带扩展名的文件名
             let fields = [
-                "path": "/cuishibing/\(dateString)",  // 使用资产的创建���期
-                "name": asset.localIdentifier,
-                "createTime": "\(Int(creationDate.timeIntervalSince1970))"  // 也使用资产的创建时间
+                "path": "/\(username)/\(dateString)",
+                "name": fileName,  // 使用带扩展名的文件名
+                "createTime": "\(Int(creationDate.timeIntervalSince1970))"
             ]
             
             for (key, value) in fields {
@@ -567,7 +619,6 @@ class ViewController: UIViewController {
                 body.append("\(value)\r\n".data(using: .utf8)!)
             }
             
-            // 添加结束标记
             body.append("--\(boundary)--\r\n".data(using: .utf8)!)
             
             // 创建上传任务
@@ -587,6 +638,7 @@ class ViewController: UIViewController {
                         print("上传成功")
                         self?.handleUploadComplete(asset: asset, success: true)
                     } else {
+                        print("上传失败: 服务器返回非200状态码")
                         self?.handleUploadComplete(asset: asset, success: false)
                     }
                 }
@@ -624,33 +676,38 @@ class ViewController: UIViewController {
             return
         }
         
-        // 创建检查文件存在的URL
         let checkURL = serverURL.appendingPathComponent("model/FileManageModel/fileExist")
-        
-        // 创建请求
         var request = URLRequest(url: checkURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        // 计算文件的MD5
         let options = PHImageRequestOptions()
         options.deliveryMode = .highQualityFormat
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
         
-        PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { (data, _, _, _) in
-            guard let imageData = data else {
+        PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { [weak self] (data, dataUTI, _, _) in
+            guard let self = self,
+                  let imageData = data else {
                 completion(false)
                 return
             }
             
-            // 使用新的部分MD5计算方法
+            let fileExtension = self.getFileExtension(from: dataUTI)
             let md5String = imageData.partialMD5String
             
-            // 创建请求体
-            let requestBody: [String: String] = ["md5": md5String]
+            let creationDate = asset.creationDate ?? Date()
+            let dateString = DateFormatter.yyyyMMdd.string(from: creationDate)
+            let username = UserDefaults.standard.string(forKey: "Username") ?? "default"
+            let fileName = "\(asset.localIdentifier).\(fileExtension)"
+            let filePath = "/\(username)/\(dateString)"
             
-            // 序列化为JSON数据
+            let requestBody: [String: String] = [
+                "md5": md5String,
+                "fileName": fileName,
+                "path": filePath
+            ]
+            
             guard let jsonData = try? JSONEncoder().encode(requestBody) else {
                 completion(false)
                 return
@@ -658,7 +715,6 @@ class ViewController: UIViewController {
             
             request.httpBody = jsonData
             
-            // 发送请求
             let task = URLSession.shared.dataTask(with: request) { (data, response, error) in
                 DispatchQueue.main.async {
                     if let error = error {
@@ -672,9 +728,7 @@ class ViewController: UIViewController {
                        let data = data,
                        let responseString = String(data: data, encoding: .utf8) {
                         print("检查文件响应: \(responseString)")
-                        // 据响应判断文件是否存在
-                        // TODO: 根据实际响应格式解析结果
-                        let fileExists = responseString.contains("true") // 示例判断逻辑
+                        let fileExists = responseString.contains("true")
                         completion(fileExists)
                     } else {
                         completion(false)
@@ -683,6 +737,41 @@ class ViewController: UIViewController {
             }
             
             task.resume()
+        }
+    }
+    
+    // 添加获取文件扩展名的辅助方法
+    private func getFileExtension(from dataUTI: String?) -> String {
+        if let uti = dataUTI {
+            switch uti {
+            case "public.jpeg", "public.jpg":
+                return "jpg"
+            case "public.png":
+                return "png"
+            case "public.heic":
+                return "heic"
+            case "public.heif":
+                return "heif"
+            default:
+                return "jpg" // 默认使用 jpg
+            }
+        }
+        return "jpg"
+    }
+    
+    // 添加获取 MIME 类型的辅助方法
+    private func getMimeType(for extension: String) -> String {
+        switch `extension`.lowercased() {
+        case "jpg", "jpeg":
+            return "image/jpeg"
+        case "png":
+            return "image/png"
+        case "heic":
+            return "image/heic"
+        case "heif":
+            return "image/heif"
+        default:
+            return "image/jpeg"
         }
     }
 }
@@ -696,15 +785,13 @@ extension ViewController: UICollectionViewDataSource {
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "PhotoCell", for: indexPath) as! PhotoCell
         if let asset = assets?[indexPath.item] {
-            let isUploaded = uploadStatusCache[asset.localIdentifier] ?? false
-            let progress = uploadProgress[asset.localIdentifier]
+            let assetId = asset.localIdentifier
+            let progress = uploadProgress[assetId]
+            
+            // 如果有进度，说明正在上传；如果在uploadingAssets中，说明在队列中等待上传
+            let isUploaded = !uploadingAssets.contains(assetId) && progress == nil
             
             cell.configure(with: asset, isUploaded: isUploaded, uploadProgress: progress)
-            
-            // 只有在服务器已配置且文件未上传时才触发上传
-            if serverConfig.isConfigured && !isUploaded && progress == nil {
-                uploadPhoto(asset: asset)
-            }
         }
         return cell
     }
@@ -843,7 +930,7 @@ extension Data {
             let backData = self.suffix(chunkSize)
             dataToHash.append(backData)
         } else if self.count > chunkSize {
-            // 如���文件大小在20KB-40KB之间，添加剩部分
+            // 如果文件大小在20KB-40KB之间，添加剩余部分
             let backData = self.suffix(self.count - chunkSize)
             dataToHash.append(backData)
         }

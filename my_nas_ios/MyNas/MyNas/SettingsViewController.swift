@@ -138,6 +138,8 @@ class SettingsViewController: UIViewController {
         
         showAlert(message: "保存成功") { [weak self] in
             self?.navigationController?.popViewController(animated: true)
+            
+            NotificationCenter.default.post(name: .serverConfigDidChange, object: nil)
         }
     }
     
@@ -159,4 +161,8 @@ extension SettingsViewController: UITextFieldDelegate {
         }
         return true
     }
+}
+
+extension Notification.Name {
+    static let serverConfigDidChange = Notification.Name("serverConfigDidChange")
 }

@@ -15,20 +15,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = (scene as? UIWindowScene) else { return }
         
-        // 创建窗口
-        window = UIWindow(windowScene: windowScene)
+        let window = UIWindow(windowScene: windowScene)
         
-        // 创建主视图控制器
-        let viewController = ViewController()
+        // 检查是否已经完成首次设置
+        if UserDefaults.standard.bool(forKey: "HasCompletedWelcome") {
+            let viewController = ViewController()
+            let navigationController = UINavigationController(rootViewController: viewController)
+            window.rootViewController = navigationController
+        } else {
+            window.rootViewController = WelcomeViewController()
+        }
         
-        // 创建导航控制器并将主视图控制器嵌入其中
-        let navigationController = UINavigationController(rootViewController: viewController)
-        
-        // 设置窗口的根视图控制器
-        window?.rootViewController = navigationController
-        
-        // 显示窗口
-        window?.makeKeyAndVisible()
+        self.window = window
+        window.makeKeyAndVisible()
     }
 
     func sceneDidDisconnect(_ scene: UIScene) {

@@ -3,27 +3,38 @@ import Photos
 
 class PhotoCell: UICollectionViewCell {
     private let imageView: UIImageView = {
-        let view = UIImageView()
-        view.contentMode = .scaleAspectFill
-        view.clipsToBounds = true
-        return view
+        let iv = UIImageView()
+        iv.contentMode = .scaleAspectFill
+        iv.clipsToBounds = true
+        return iv
     }()
     
-    private let uploadStatusView: UIImageView = {
-        let imageView = UIImageView()
-        imageView.image = UIImage(systemName: "checkmark.circle.fill")
-        imageView.tintColor = .systemGreen
-        imageView.contentMode = .scaleAspectFit
-        imageView.isHidden = true
-        return imageView
+    private let checkmarkView: UIImageView = {
+        let iv = UIImageView()
+        // 使用系统提供的勾选图标
+        let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .bold)
+        iv.image = UIImage(systemName: "checkmark.circle.fill", withConfiguration: config)
+        iv.tintColor = .systemGreen  // 设置为绿色
+        iv.backgroundColor = .white   // 白色背景提高可见度
+        iv.layer.cornerRadius = 12    // 圆角效果
+        iv.clipsToBounds = true
+        iv.isHidden = true           // 默认隐藏
+        return iv
     }()
     
     private let progressView: UIProgressView = {
-        let progress = UIProgressView(progressViewStyle: .default)
-        progress.progressTintColor = .systemBlue
-        progress.trackTintColor = .systemGray5
-        progress.isHidden = true
-        return progress
+        let pv = UIProgressView(progressViewStyle: .default)
+        pv.progressTintColor = .systemBlue
+        pv.trackTintColor = .systemGray5
+        pv.isHidden = true
+        return pv
+    }()
+    
+    private let selectedOverlay: UIView = {
+        let view = UIView()
+        view.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.3)
+        view.isHidden = true
+        return view
     }()
     
     override init(frame: CGRect) {
@@ -37,12 +48,14 @@ class PhotoCell: UICollectionViewCell {
     
     private func setupUI() {
         contentView.addSubview(imageView)
-        contentView.addSubview(uploadStatusView)
         contentView.addSubview(progressView)
+        contentView.addSubview(checkmarkView)
+        contentView.addSubview(selectedOverlay)
         
         imageView.translatesAutoresizingMaskIntoConstraints = false
-        uploadStatusView.translatesAutoresizingMaskIntoConstraints = false
         progressView.translatesAutoresizingMaskIntoConstraints = false
+        checkmarkView.translatesAutoresizingMaskIntoConstraints = false
+        selectedOverlay.translatesAutoresizingMaskIntoConstraints = false
         
         NSLayoutConstraint.activate([
             imageView.topAnchor.constraint(equalTo: contentView.topAnchor),
@@ -50,48 +63,66 @@ class PhotoCell: UICollectionViewCell {
             imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             imageView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             
-            uploadStatusView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
-            uploadStatusView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
-            uploadStatusView.widthAnchor.constraint(equalToConstant: 20),
-            uploadStatusView.heightAnchor.constraint(equalToConstant: 20),
+            progressView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
+            progressView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
+            progressView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
             
-            progressView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            progressView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            progressView.bottomAnchor.constraint(equalTo: uploadStatusView.topAnchor, constant: -2),
-            progressView.heightAnchor.constraint(equalToConstant: 2)
+            // 勾选图标放在右上角
+            checkmarkView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
+            checkmarkView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
+            checkmarkView.widthAnchor.constraint(equalToConstant: 24),
+            checkmarkView.heightAnchor.constraint(equalToConstant: 24),
+            
+            selectedOverlay.topAnchor.constraint(equalTo: contentView.topAnchor),
+            selectedOverlay.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            selectedOverlay.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            selectedOverlay.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
         ])
     }
     
-    func configure(with asset: PHAsset, isUploaded: Bool, uploadProgress: Float? = nil) {
-        uploadStatusView.isHidden = !isUploaded
-        
-        if let progress = uploadProgress {
-            progressView.isHidden = false
-            progressView.progress = progress
-        } else {
-            progressView.isHidden = true
-            progressView.progress = 0
+    override var isSelected: Bool {
+        didSet {
+            selectedOverlay.isHidden = !isSelected
         }
-        
+    }
+    
+    func configure(with asset: PHAsset, isUploaded: Bool, uploadProgress: Float?) {
+        // 加载缩略图
+        let size = CGSize(width: 200, height: 200)
         let options = PHImageRequestOptions()
         options.deliveryMode = .opportunistic
         options.isNetworkAccessAllowed = true
         
         PHImageManager.default().requestImage(
             for: asset,
-            targetSize: CGSize(width: 200, height: 200),
+            targetSize: size,
             contentMode: .aspectFill,
             options: options
         ) { [weak self] image, _ in
             self?.imageView.image = image
+        }
+        
+        // 更新上传状态指示器
+        checkmarkView.isHidden = !isUploaded
+        
+        // 更新进度条
+        if let progress = uploadProgress {
+            progressView.isHidden = false
+            progressView.progress = progress
+            // 当有进度时隐藏勾选图标
+            checkmarkView.isHidden = true
+        } else {
+            progressView.isHidden = true
         }
     }
     
     override func prepareForReuse() {
         super.prepareForReuse()
         imageView.image = nil
-        uploadStatusView.isHidden = true
+        checkmarkView.isHidden = true
         progressView.isHidden = true
         progressView.progress = 0
+        selectedOverlay.isHidden = true
+        isSelected = false
     }
 } 

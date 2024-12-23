@@ -1,8 +1,8 @@
 package cui.shibing.biz.nas;
 
-import cui.shibing.core.AnnotationSupportModel;
-import cui.shibing.core.Event;
-import cui.shibing.core.Param;
+import cui.shibing.core.*;
+import cui.shibing.store.entity.QTModel;
+import cui.shibing.store.entity.TModel;
 
 import java.io.*;
 import java.nio.file.Path;
@@ -28,10 +28,14 @@ public class FileManageModel extends AnnotationSupportModel {
     }
 
     @Event
-    public boolean fileExist(@Param("md5") String md5) {
-        FileMd5Model fileMd5Model = new FileMd5Model();
-        fileMd5Model.setMd5(md5);
-        return fileMd5Model.exist();
+    public boolean fileExist(@Param("md5") String md5, @Param("fileName") String fileName) {
+        if (md5 == null || fileName == null) {
+            return false;
+        }
+        ModelFactory.Condition condition = new ModelFactory.Condition();
+        condition.and("name", fileName).and("md5", md5);
+        Model model = ModelFactory.getModel(FileMd5Model.class.getSimpleName(), condition);
+        return model != null;
     }
 
     @Event
@@ -80,6 +84,7 @@ public class FileManageModel extends AnnotationSupportModel {
 
             // 创建并保存FileMd5Model
             FileMd5Model md5Model = new FileMd5Model();
+            md5Model.setName(fileName);
             md5Model.setPath(Path.of(path, fileName).toString());
             md5Model.calculateMd5(targetFile.getAbsolutePath());
             md5Model.setCreateTime(createTime);
