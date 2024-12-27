@@ -23,7 +23,7 @@ public class FileMd5Model extends AnnotationSupportModel implements Storable {
 
     @Override
     public String getIdentifier() {
-        return name;
+        return md5;
     }
 
     public void calculateMd5(String rawPath) {
