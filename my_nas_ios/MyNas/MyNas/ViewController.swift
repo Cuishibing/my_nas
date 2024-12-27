@@ -49,7 +49,7 @@ class ViewController: UIViewController {
     private var uploadingAssets = Set<String>()
     
     // 上传队列
-    private var uploadQueue: [PHAsset] = []
+    private var uploadQueue: [(asset: PHAsset, completion: (Bool) -> Void)] = []
     private var isUploading = false
     
     // 上传进度跟踪
@@ -94,6 +94,9 @@ class ViewController: UIViewController {
     // 添加属性
     private var serverConfig: ServerConfig = .shared
     
+    // 添加一个缓存来存储已检查过的文件状态
+    private var checkedFiles: [String: Bool] = [:]
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
@@ -136,7 +139,7 @@ class ViewController: UIViewController {
         
         print("正在检查现有照片的上传状态...")
         
-        // 创建一个队列来存储需要上传的照片
+        // 创建一个队列来存储需要上传的照��
         var photosToUpload: [PHAsset] = []
         
         for i in 0..<assets.count {
@@ -151,7 +154,9 @@ class ViewController: UIViewController {
         
         // 批量处理需上传的照片
         for asset in photosToUpload {
-            uploadPhoto(asset: asset)
+            uploadPhotoWithCompletion(asset: asset) { _ in 
+                // 对于现有照片，我们不需要更新 lastCheckTime
+            }
         }
     }
     
@@ -252,7 +257,7 @@ class ViewController: UIViewController {
     }
     
     private func checkNewPhotos() {
-        // 如果服务���未配置，不执行检查
+        // 如果服务器未配置，不执行检查
         guard serverConfig.isConfigured else {
             return
         }
@@ -260,26 +265,14 @@ class ViewController: UIViewController {
         print("开始检查新照片...")
         
         let fetchOptions = PHFetchOptions()
-        fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        // 修改排序为按创建时间升序（从最早到最近）
+        fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
         fetchOptions.predicate = NSPredicate(format: "creationDate > %@", lastCheckTime as NSDate)
         
         let newAssets = PHAsset.fetchAssets(with: .image, options: fetchOptions)
         
         if newAssets.count > 0 {
             print("发现 \(newAssets.count) 张新照片")
-            
-            // 获取最新照片的创建时间并更新 lastCheckTime
-            if let latestAsset = newAssets.firstObject,
-               let creationDate = latestAsset.creationDate {
-                print("更新最后检查时间为: \(creationDate)")
-                lastCheckTime = creationDate  // 这里会触发 set 方法进行持久化
-            }
-            
-            // 上传新照片
-            for i in 0..<newAssets.count {
-                let asset = newAssets[i]
-                uploadPhoto(asset: asset)
-            }
             
             // 更新数据源和UI
             DispatchQueue.main.async { [weak self] in
@@ -318,6 +311,25 @@ class ViewController: UIViewController {
                             )
                         }
                     }
+                }
+            }
+            
+            // 遍历所有新照片并上传
+            for i in 0..<newAssets.count {
+                let asset = newAssets[i]
+                
+                // 使用闭包来更新 lastCheckTime
+                let updateLastCheckTime: (Bool) -> Void = { [weak self] success in
+                    if let creationDate = asset.creationDate {
+                        // 无论是上传成功还是文件已存在，都更新 lastCheckTime
+                        print("照片处理完成，更新最后检查时间为: \(creationDate)")
+                        self?.lastCheckTime = creationDate
+                    }
+                }
+                
+                // 修改 uploadPhoto 方法调用，添加完成回调
+                uploadPhotoWithCompletion(asset: asset) { success in
+                    updateLastCheckTime(success)
                 }
             }
         } else {
@@ -494,32 +506,13 @@ class ViewController: UIViewController {
     
     // 修改 uploadPhoto 方法，添加重试机制
     private func uploadPhoto(asset: PHAsset, retryCount: Int = 3) {
-        let assetId = asset.localIdentifier
-        
-        // 先检查服务器配置
-        guard serverConfig.isConfigured else {
-            return
-        }
-        
-        // 只检查是否正在上传
-        guard !uploadingAssets.contains(assetId) else {
-            return
-        }
-        
-        // 标记正在处理
-        uploadingAssets.insert(assetId)
-        
-        // 添加到上传队列
-        uploadQueue.append(asset)
-        
-        // 如果当前没有正在上传的文件，开始上传
-        processUploadQueue()
+        uploadPhotoWithCompletion(asset: asset) { _ in }
     }
     
     // 添加处理上传队列的方法
-    private func processUploadQueue() {
+    private func processUploadQueueWithCompletion() {
         // 如果正在上传或队列空，直接返回
-        guard !isUploading, let asset = uploadQueue.first else {
+        guard !isUploading, let (asset, completion) = uploadQueue.first else {
             return
         }
         
@@ -530,16 +523,17 @@ class ViewController: UIViewController {
         checkFileExists(asset: asset) { [weak self] fileExists in
             if fileExists {
                 print("文件已存在，无需重复上传")
-                self?.handleUploadComplete(asset: asset, success: true)
+                // 文件存在时也调用成功回调
+                self?.handleUploadCompleteWithCallback(asset: asset, success: true, completion: completion)
             } else {
                 // 文件不存在，执行上传
-                self?.performUpload(asset: asset)
+                self?.performUploadWithCompletion(asset: asset, completion: completion)
             }
         }
     }
     
     // 修改 handleUploadComplete 方法
-    private func handleUploadComplete(asset: PHAsset, success: Bool, retryCount: Int = 3) {
+    private func handleUploadCompleteWithCallback(asset: PHAsset, success: Bool, completion: @escaping (Bool) -> Void, retryCount: Int = 3) {
         // 从队列中移除
         uploadQueue.removeFirst()
         
@@ -547,9 +541,11 @@ class ViewController: UIViewController {
             print("上传失败，准备重试，剩余重试次数：\(retryCount - 1)")
             // 从正在上传集合中移除，允许重试
             uploadingAssets.remove(asset.localIdentifier)
-            // 延迟一秒后试
+            // 延迟一秒后重试
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-                self?.uploadPhoto(asset: asset, retryCount: retryCount - 1)
+                self?.uploadPhotoWithCompletion(asset: asset) { success in
+                    completion(success)
+                }
             }
             return
         }
@@ -559,27 +555,33 @@ class ViewController: UIViewController {
         
         // 更新上传状态
         if success {
+            // 更新缓存
+            checkedFiles[asset.localIdentifier] = true
+            
             // 清除进度
             uploadProgress.removeValue(forKey: asset.localIdentifier)
             
-            // 刷新对应的单元格，显示绿色勾子
+            // 刷新对应的单元格
             if let index = assets?.index(of: asset),
                let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0)) as? PhotoCell {
                 cell.configure(with: asset, isUploaded: true, uploadProgress: nil)
             }
         }
         
+        // 调用完成回调
+        completion(success)
+        
         // 重置上传状态
         isUploading = false
         
         // 处理队列中的下一个文件
-        processUploadQueue()
+        processUploadQueueWithCompletion()
     }
     
     // 修改 performUpload 方法
-    private func performUpload(asset: PHAsset) {
+    private func performUploadWithCompletion(asset: PHAsset, completion: @escaping (Bool) -> Void) {
         guard let serverURL = serverConfig.serverURL else {
-            handleUploadComplete(asset: asset, success: false)
+            handleUploadCompleteWithCallback(asset: asset, success: false, completion: completion)
             showServerConfigAlert()
             return
         }
@@ -594,7 +596,7 @@ class ViewController: UIViewController {
             guard let self = self,
                   let imageData = data else {
                 print("获取图片数据失败")
-                self?.handleUploadComplete(asset: asset, success: false)
+                self?.handleUploadCompleteWithCallback(asset: asset, success: false, completion: completion)
                 return
             }
             
@@ -649,17 +651,17 @@ class ViewController: UIViewController {
                     
                     if let error = error {
                         print("上传失败: \(error.localizedDescription)")
-                        self?.handleUploadComplete(asset: asset, success: false)
+                        self?.handleUploadCompleteWithCallback(asset: asset, success: false, completion: completion)
                         return
                     }
                     
                     if let httpResponse = response as? HTTPURLResponse,
                        httpResponse.statusCode == 200 {
                         print("上传成功")
-                        self?.handleUploadComplete(asset: asset, success: true)
+                        self?.handleUploadCompleteWithCallback(asset: asset, success: true, completion: completion)
                     } else {
                         print("上传失败: 服务器返回非200状态码")
-                        self?.handleUploadComplete(asset: asset, success: false)
+                        self?.handleUploadCompleteWithCallback(asset: asset, success: false, completion: completion)
                     }
                 }
             }
@@ -691,6 +693,14 @@ class ViewController: UIViewController {
     
     // 在 ViewController 类中添加查文件是否存在的方法
     private func checkFileExists(asset: PHAsset, completion: @escaping (Bool) -> Void) {
+        let assetId = asset.localIdentifier
+        
+        // 如果已经检查过，直接返回缓存的结果
+        if let exists = checkedFiles[assetId] {
+            completion(exists)
+            return
+        }
+        
         guard let serverURL = serverConfig.serverURL else {
             completion(false)
             return
@@ -749,6 +759,7 @@ class ViewController: UIViewController {
                        let responseString = String(data: data, encoding: .utf8) {
                         print("检查文件响应: \(responseString)")
                         let fileExists = responseString.contains("true")
+                        self.checkedFiles[assetId] = fileExists
                         completion(fileExists)
                     } else {
                         completion(false)
@@ -794,6 +805,32 @@ class ViewController: UIViewController {
             return "image/jpeg"
         }
     }
+    
+    // 添加新的上传方法，包含完成��调
+    private func uploadPhotoWithCompletion(asset: PHAsset, completion: @escaping (Bool) -> Void) {
+        let assetId = asset.localIdentifier
+        
+        // 先检查服务器配置
+        guard serverConfig.isConfigured else {
+            completion(false)
+            return
+        }
+        
+        // 只检查是否正在上传
+        guard !uploadingAssets.contains(assetId) else {
+            completion(false)
+            return
+        }
+        
+        // 标记正在处理
+        uploadingAssets.insert(assetId)
+        
+        // 添加到上传队列，并保存完成回调
+        uploadQueue.append((asset, completion))
+        
+        // 如果当前没有正在上传的文件，开始上传
+        processUploadQueueWithCompletion()
+    }
 }
 
 // MARK: - UICollectionViewDataSource
@@ -808,10 +845,28 @@ extension ViewController: UICollectionViewDataSource {
             let assetId = asset.localIdentifier
             let progress = uploadProgress[assetId]
             
-            // 如果有进度，说明正在上传；如果在uploadingAssets中，说明在队列中等待上传
-            let isUploaded = !uploadingAssets.contains(assetId) && progress == nil
+            // 修改判断逻辑：
+            // 1. 如果在 uploadingAssets 中，说明正在上传或等待上传
+            // 2. 如果有 progress，说明正在上传中
+            // 3. 如果都不是，则需要检查是否已上传
+            let isUploading = uploadingAssets.contains(assetId)
             
-            cell.configure(with: asset, isUploaded: isUploaded, uploadProgress: progress)
+            if isUploading {
+                // 正在上传或等待上传
+                cell.configure(with: asset, isUploaded: false, uploadProgress: progress)
+            } else if progress != nil {
+                // 有上传进度
+                cell.configure(with: asset, isUploaded: false, uploadProgress: progress)
+            } else {
+                // 检查是否已上传
+                checkFileExists(asset: asset) { [weak cell] exists in
+                    DispatchQueue.main.async {
+                        cell?.configure(with: asset, isUploaded: exists, uploadProgress: nil)
+                    }
+                }
+                // 先显示为未上传状态
+                cell.configure(with: asset, isUploaded: false, uploadProgress: nil)
+            }
         }
         return cell
     }
@@ -910,7 +965,7 @@ extension ViewController: PHPhotoLibraryChangeObserver {
                         }
                     }
                 } else {
-                    // 果变化太大，直接重加载
+                    // 果变化大，直接重加载
                     collectionView.reloadData()
                 }
             }
@@ -938,47 +993,8 @@ extension DateFormatter {
 // 修改 Data 的 MD5 扩展
 extension Data {
     var partialMD5String: String {
-        let sampleSizeKB = 20  // 每个样本 20KB
-        let sampleBytes = sampleSizeKB * 1024
-        let fileSize = self.count
-        let sampleCount = 5
-        
-        // 如果文件小于采样大小的5倍，直接计算整个文件的MD5
-        if fileSize <= sampleCount * sampleBytes {
-            return self.md5String
-        }
-        
-        // 创建 MD5 上下文
-        let length = Int(CC_MD5_DIGEST_LENGTH)
-        var digest = [UInt8](repeating: 0, count: length)
-        var context = CC_MD5_CTX()
-        CC_MD5_Init(&context)
-        
-        // 计算每个采样点之间的间隔
-        let interval = (fileSize - sampleBytes) / (sampleCount - 1)
-        
-        // 进行5次采样
-        for i in 0..<sampleCount {
-            // 计算当前采样点的位置
-            let position = i * interval
-            let endPosition = Swift.min(position + sampleBytes, fileSize)
-            let bytesToRead = endPosition - position
-            
-            // 读取采样数据
-            let range = position..<endPosition
-            let sampleData = self.subdata(in: range)
-            
-            // 更新 MD5
-            sampleData.withUnsafeBytes { buffer in
-                CC_MD5_Update(&context, buffer.baseAddress, CC_LONG(bytesToRead))
-            }
-        }
-        
-        // 完成 MD5 计算
-        CC_MD5_Final(&digest, &context)
-        
-        // 转换为十六进制字符串
-        return digest.map { String(format: "%02x", $0) }.joined()
+        // 直接使用完整的 MD5 计算
+        return self.md5String
     }
     
     // 计算整个文件的 MD5

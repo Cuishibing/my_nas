@@ -34,19 +34,19 @@ public class FileManageModel extends AnnotationSupportModel {
 
     @Event
     public boolean fileExist(@Param("md5") String md5, @Param("fileName") String fileName) {
-        logger.info("mdt:{}, fileName:{}", md5, fileName);
+        logger.info("md5:{}, fileName:{}", md5, fileName);
         if (md5 == null || fileName == null) {
             return false;
         }
-//        FileMd5Model fileMd5Model = new FileMd5Model();
-//        fileMd5Model.setName(fileName);
-//        return fileMd5Model.exist();
+        FileMd5Model fileMd5Model = new FileMd5Model();
+        fileMd5Model.setMd5(md5);
+        return fileMd5Model.exist();
 
-
-        ModelFactory.Condition condition = new ModelFactory.Condition();
-        condition.and("name", fileName).and("md5", md5);
-        Model model = ModelFactory.getModel(FileMd5Model.class.getSimpleName(), condition);
-        return model != null;
+//
+//        ModelFactory.Condition condition = new ModelFactory.Condition();
+//        condition.and("name", fileName).and("md5", md5);
+//        Model model = ModelFactory.getModel(FileMd5Model.class.getSimpleName(), condition);
+//        return model != null;
 
 
     }
