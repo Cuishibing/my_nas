@@ -97,6 +97,16 @@ class ViewController: UIViewController {
     // 添加一个缓存来存储已检查过的文件状态
     private var checkedFiles: [String: Bool] = [:]
     
+    // 添加上传按钮
+    private lazy var uploadButton: UIBarButtonItem = {
+        UIBarButtonItem(
+            title: "上传",
+            style: .plain,
+            target: self,
+            action: #selector(uploadSelectedPhotos)
+        )
+    }()
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
@@ -139,7 +149,7 @@ class ViewController: UIViewController {
         
         print("正在检查现有照片的上传状态...")
         
-        // 创建一个队列来存储需要上传的照��
+        // 创建一个队列来存储需要上传的照片
         var photosToUpload: [PHAsset] = []
         
         for i in 0..<assets.count {
@@ -367,8 +377,10 @@ class ViewController: UIViewController {
         if isMultiSelectMode {
             // 多选模式下的按钮布局
             navigationItem.leftBarButtonItem = cancelButton
-            navigationItem.rightBarButtonItems = [deleteButton, settingsButton]
+            // 添加上传按钮到右侧按钮组
+            navigationItem.rightBarButtonItems = [deleteButton, uploadButton, settingsButton]
             deleteButton.isEnabled = !selectedAssets.isEmpty
+            uploadButton.isEnabled = !selectedAssets.isEmpty
         } else {
             // 普通模式下的按钮布局
             navigationItem.leftBarButtonItem = nil
@@ -806,7 +818,7 @@ class ViewController: UIViewController {
         }
     }
     
-    // 添加新的上传方法，包含完成��调
+    // 添加新的上传方法，包含完成回调
     private func uploadPhotoWithCompletion(asset: PHAsset, completion: @escaping (Bool) -> Void) {
         let assetId = asset.localIdentifier
         
@@ -830,6 +842,55 @@ class ViewController: UIViewController {
         
         // 如果当前没有正在上传的文件，开始上传
         processUploadQueueWithCompletion()
+    }
+    
+    // 添加上传选中照片的方法
+    @objc private func uploadSelectedPhotos() {
+        // 检查服务器配置
+        guard serverConfig.isConfigured else {
+            showServerConfigAlert()
+            return
+        }
+        
+        // 创建一个数组来存储选中的照片
+        let photosToUpload = Array(selectedAssets)
+        
+        // 显示确认对话框
+        let alert = UIAlertController(
+            title: "上传照片",
+            message: "是否上传选中的 \(photosToUpload.count) 张照片？",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        
+        alert.addAction(UIAlertAction(title: "上传", style: .default) { [weak self] _ in
+            // 退出多选模式
+            self?.isMultiSelectMode = false
+            
+            // 上传所有选中的照片
+            for asset in photosToUpload {
+                self?.uploadPhotoWithCompletion(asset: asset) { _ in }
+            }
+            
+            // 显示上传开始的提示
+            self?.showUploadStartedAlert(count: photosToUpload.count)
+        })
+        
+        present(alert, animated: true)
+    }
+    
+    // 添加上传开始的提示方法
+    private func showUploadStartedAlert(count: Int) {
+        let alert = UIAlertController(
+            title: "开始上传",
+            message: "已开始上传 \(count) 张照片，您可以在相册中查看上传进度",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "确定", style: .default))
+        
+        present(alert, animated: true)
     }
 }
 
@@ -879,7 +940,9 @@ extension ViewController: UICollectionViewDelegate {
         
         if isMultiSelectMode {
             selectedAssets.insert(asset)
+            // 更新按钮状态
             deleteButton.isEnabled = true
+            uploadButton.isEnabled = true
             // 更新选中状态
             if let cell = collectionView.cellForItem(at: indexPath) {
                 cell.isSelected = true
@@ -887,7 +950,6 @@ extension ViewController: UICollectionViewDelegate {
         } else {
             collectionView.deselectItem(at: indexPath, animated: false)
             let imageVC = ImageViewController(assets: assets!, initialIndex: indexPath.item)
-            // 设置代理
             imageVC.delegate = self
             imageVC.modalPresentationStyle = .fullScreen
             present(imageVC, animated: true)
@@ -898,7 +960,10 @@ extension ViewController: UICollectionViewDelegate {
         if isMultiSelectMode {
             guard let asset = assets?[indexPath.item] else { return }
             selectedAssets.remove(asset)
-            deleteButton.isEnabled = !selectedAssets.isEmpty
+            // 更新按钮状态
+            let hasSelectedAssets = !selectedAssets.isEmpty
+            deleteButton.isEnabled = hasSelectedAssets
+            uploadButton.isEnabled = hasSelectedAssets
             // 更新选中状态
             if let cell = collectionView.cellForItem(at: indexPath) {
                 cell.isSelected = false
