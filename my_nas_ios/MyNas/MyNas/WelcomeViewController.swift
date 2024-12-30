@@ -64,6 +64,7 @@ class WelcomeViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
+        setupKeyboardDismiss()
         
         // 添加日志
         let savedUsername = UserDefaults.standard.string(forKey: "Username")
@@ -123,6 +124,19 @@ class WelcomeViewController: UIViewController {
         ])
         
         startButton.addTarget(self, action: #selector(startButtonTapped), for: .touchUpInside)
+    }
+    
+    private func setupKeyboardDismiss() {
+        // 添加点击手势来关闭键盘
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
+        view.addGestureRecognizer(tapGesture)
+        
+        // 设置文本框代理
+        usernameTextField.delegate = self
+    }
+    
+    @objc private func dismissKeyboard() {
+        view.endEditing(true)
     }
     
     @objc private func startButtonTapped() {
@@ -249,5 +263,12 @@ class FeatureCell: UICollectionViewCell {
         iconImageView.image = UIImage(systemName: iconName)
         titleLabel.text = title
         descriptionLabel.text = description
+    }
+}
+
+extension WelcomeViewController: UITextFieldDelegate {
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        textField.resignFirstResponder()
+        return true
     }
 } 
